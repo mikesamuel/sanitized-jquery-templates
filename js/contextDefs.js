@@ -324,14 +324,14 @@ var ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE = 3;
 
 /**
  * Only allow a valid identifier - letters, numbers, dashes, and underscores.
- * Throw a runtime exception otherwise.
+ * Throws an exception otherwise.
  * @const
  */
 var ESC_MODE_FILTER_HTML_ELEMENT_NAME = 4;
 
 /**
  * Only allow a valid identifier - letters, numbers, dashes, and underscores.
- * Throw a runtime exception otherwise.
+ * Throws an exception otherwise.
  * @const
  */
 var ESC_MODE_FILTER_HTML_ATTRIBUTE = 5;
@@ -445,7 +445,7 @@ var CONTENT_KIND_HTML = 0;
  * <p>
  * The content should not contain unescaped quotes, newlines, or anything else
  * that would cause parsing to fail or to cause a JS parser to finish the
- * string its parsing inside the content.
+ * string it's parsing inside the content.
  * <p>
  * The content must also not end inside an escape sequence ; no partial octal
  * escape sequences or odd number of '{@code \}'s at the end.
