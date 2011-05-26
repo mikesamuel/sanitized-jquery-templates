@@ -1,0 +1,320 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html><head>
+<title>Tokenize Demo</title>
+<style>
+td.token { font-family: monospace; white-space: pre }
+</style>
+<link href="http://google-code-prettify.googlecode.com/svn/trunk/src/prettify.css" type="text/css" rel="stylesheet" />
+<script type="text/javascript" src="http://google-code-prettify.googlecode.com/svn/trunk/src/prettify.js"></script>
+</head>
+<body onload="prettyPrint()">
+<h1>Tokenize Demo</h1>
+
+<p>This is a demo of the
+<a href="http://wiki.ecmascript.org/doku.php?id=strawman:quasis#tokenizing"
+>quasiliteral tokenizing</a> code specified in the EcmaScript quasiliteral
+strawman.</p>
+
+<p>It is meant to demonstrate that if we start down the slippery slope
+of allowing complex expressions in the quasiliteral
+<i>SubstitutionBody</i> production, that there is an efficiently
+tokenizable grammar at the bottom of that slope.</p>
+
+<p>Enter JavaScript source code, including backquoted (<tt>`</tt>)
+quasiliterals with <code>${&hellip;}</code> style substitutions, hit
+submit, and you should get a series of tokens at the bottom that
+correctly identify quasiliteral, substitution, and expression token
+boundaries.  For simplicity, this tokenizer does not recognize
+division operators or regular expression literals, and does not try to
+fail on invalid or incomplete inputs.</p>
+
+<textarea id="source" cols=80 rows=30>
+// Outside any quasi
+
+var x = `literal part
+
+         some escapes \` \\ \${...}
+
+         1. ${ simpleExpression }
+
+         2. ${ function nested() { return 42 }() }
+
+         3. ${ foo`nested${quasi}` }
+
+         4. ${ "string with ` ${junk} ".length }
+
+         the end`;
+
+/* more tokens */
+La, de('da`')
+
+
+// Backticks in comments, no problem ` foo `
+
+"Nor in `strings'";
+
+"${...} in strings is not special."
+
+// And ${x} outside a literal portion is just a series of
+// regular tokens.
+${x}  // Syntactically invalid but lexically OK.
+</textarea>
+
+<button type="button"
+ onclick="fillTokenTable(document.getElementById('source'))"
+ >Tokenize</button>
+
+<table id="tokens" border="1" cellpadding=4 cellspacing=0>
+<tr id="tokenshdr"><th>Token</th><th>IsLiteralPortion?</th><th>InLiteralPortion?<th>Stack</th><th>Line#</tr>
+</table>
+
+<p>First we define a JavaScript tokenizer for the entire grammar, minus
+div ops &amp; regexp literals for simplicty.</p>
+
+<xmp class="prettyprint"
+>TOKEN = new RegExp("^(?:" + [
+      // Space
+      "[\\s\ufeff]+",
+      // A block comment
+      "/\\*(?:[^*]|\\*+[^*/])*\\*+/",
+      // A line comment
+      "//.*",
+      // A string
+      "\'(?:[^\\\\\'\\r\\n\\u2028\\u2029]|\\\\(?:\\r\\n|[\\s\\S]))*\'",
+      "\"(?:[^\\\\\"\\r\\n\\u2028\\u2029]|\\\\(?:\\r\\n|[\\s\\S]))*\"",
+      // Number
+      // (before punctuation to prevent breaking around decimal point)
+      "0x[0-9a-f]+",
+      "(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?",
+      // IdentifierName (ignoring non-Latin letters)
+      "[_$a-z][\\w$]*",
+      // Punctuation
+      [ ".", "[", "]", "(", ")", "++", "--", "!", "~", "+", "-",
+        "*", "%", "+", "-", "<<", ">>", ">>>", "<", "<=", ">", ">=",
+        "==", "!=", "===", "!==", "&", "^", "|", "&&", "||", "?",
+        ":", "=", "+=", "-=", "*=", "%=", "<<=", ">>=", ">>>=",
+        "&=", "^=", "|=", "&=", ",", "{", "}", ";" ]
+        // Sort longest first so that we can join on | to get a
+        // regular expression that matches the longest punctuation token
+        // possible.
+        .sort(function (a, b) { return b.length - a.length; })
+        // Escape for RegExp syntax.
+        .map(function (x) { return x.replace(/./g, "\\$&"); })
+        .join("|")]
+      .join("|") + ")",
+      "i");
+
+function tokenizeNoQuasis(source) {
+  return source.match(TOKEN)[0];
+}
+</xmp>
+
+<p>We need to keep track of whether we're inside a literal portion.
+Characters inside the literal portion are raw whereas outside they
+might be part of a regular EcmaScript token.  The underlined characters
+in <code>var foo = <u>`Hello, </u>${world}<u>!`</u>;</code> are in
+literal portions.</p>
+<xmp class="prettyprint"
+>inLiteralPortion = false;
+</xmp>
+
+<p>Since quasiliterals are expressions, if a substitution
+body can contain an arbitrary expression, then we need a way to figure
+out whether a <code>}</code> token ends a substitution.
+We keep a boolean stack to tell us whether the next <code>}</code> token
+closes the innermost substitution.  If the top of the stack is true, then
+the next <code>}</code> token does close the innermost substitution.
+A boolean stack need not be a heavyweight dynamically resizing data
+structure.
+If willing to limit bracket nesting to 58 levels, the stack and its
+head index can pack into 64 bits.</p>
+<xmp class="prettyprint"
+>closesInnermostSubstitution = [];</xmp>
+
+<p>The number of quasiliteral nesting levels at any time is the count
+of bits in the <code>closesInnermostSubstitution</code> stack plus 0
+if <code>!inLiteralPortion</code> or plus 1 if
+<code>inLiteralPortion</code>.</p>
+
+<p>We need to return a token, the untokenized source, and a boolean
+telling us whether the token is a literal portion since literal
+portions could look like regular tokens: <code>return `${x}return${y}`</code></p>
+<xmp class="prettyprint"
+>tokenize = function tokenize(source) {
+  var tokenLen,
+      tokenIsLiteralPortion = false;</xmp>
+
+<p>To pull a token off source, we scan from the left.
+Below we check the next character occasionally so this scanner
+needs to lookahead 1 <i>SourceCharacter</i>.</p>
+<xmp class="prettyprint"
+>  for (var i = 0, n = source.length; i < n; ++i) {
+    var ch = source.charAt(i);
+</xmp>
+
+<p>If we are in a literal portion and it is a backtick, then we have
+come to the end of a quasiliteral.</p>
+<xmp class="prettyprint"
+>    if (inLiteralPortion && ch === '`') {
+      inLiteralPortion = false;
+      tokenIsLiteralPortion = true;
+      tokenLen = i + 1;
+      break;
+</xmp>
+
+<p>If we are in a literal portion and we see a backslash, then we
+have an escape.  Skip it and the next character to avoid exiting
+early on <tt>\`</tt> or treating <tt>\${x}</tt> as a substitution.
+</p>
+<xmp class="prettyprint"
+>    } else if (inLiteralPortion && ch == '\\') {
+       if (++i === n) { throw Error(); }
+</xmp>
+
+<p>If we are in a literal portion and we see <tt>${</tt>, then we have
+a bracketed substitution.  End the literal portion if any, transition
+out of the literal portion and update the stack since <tt>}</tt> ends
+the substitution.</p>
+<xmp class="prettyprint"
+>    } else if (inLiteralPortion && ch === '$'
+               && source.charAt(i + 1) === '{') {
+      if (i) {  // Emit the literal portion parsed thus far.
+        tokenLen = i;
+        tokenIsLiteralPortion = true;
+        break;
+      }
+      inLiteralPortion = false;
+      closesInnermostSubstitution.push(1);
+      tokenLen = i + 2;
+      break;
+</xmp>
+
+<p>Any other character in a literal portion goes onto the token.</p>
+<xmp class="prettyprint"
+>    } else if (inLiteralPortion) {
+      // Let for-loop increment i.
+</xmp>
+
+<p>If we are not in a literal portion, then a <code>{</code> expands
+the stack.</p>
+<xmp class="prettyprint"
+>    } else if (ch === '{') {
+      closesInnermostSubstitution.push(0);
+</xmp>
+
+<p>While a <code>}</code> pops, possibly ending the substitution
+and dropping us back into the literal portion.</p>
+<xmp class="prettyprint"
+>    } else if (ch === '}') {
+      inLiteralPortion = !!closesInnermostSubstitution.pop();
+      tokenLen = i + 1;
+      break;
+</xmp>
+
+<p>A <tt>`</tt> outside a literal portion enters a literal portion,
+possibly nested.</p>
+<xmp class="prettyprint"
+>    } else if (ch === '`') {
+      inLiteralPortion = true;
+</xmp>
+
+<p>Otherwise, we delegate to the tokenizer that does not recognize
+quasis.</p>
+<xmp class="prettyprint"
+>    } else {
+      tokenLen = tokenizeNoQuasis(source).length;
+      break;
+    }
+</xmp>
+
+<p>Finally, we return the token and other data.</p>
+<xmp class="prettyprint"
+>  }
+  if (tokenLen === void 0) { throw Error(); }
+  var token = source.substring(0, tokenLen);
+  return [token, source.substring(tokenLen), tokenIsLiteralPortion];
+}
+</xmp>
+
+<script>
+// Load all the JS from the <xmp> blocks.
+(function () {
+  var xmps = document.getElementsByTagName("XMP");
+  var source = "";
+  for (var i = 0, n = xmps.length; i < n; ++i) {
+    source += (xmps[i].innerText || xmps[i].textContent) + "\n;\n";
+  }
+  Function(source)();
+}());
+
+function fillTokenTable(sourceContainer) {
+  var tokensTableHeader = document.getElementById("tokenshdr");
+  while (tokensTableHeader.nextSibling) {
+    tokensTableHeader.parentNode.removeChild(
+        tokensTableHeader.nextSibling);
+  }
+  var lineNum = 1;
+  var source = sourceContainer.value;
+  while (source) {
+    var error = false;
+    var startLineNum = lineNum;
+    try {
+      var tokenSourceAndIsLP = tokenize(source);
+      var token = tokenSourceAndIsLP[0],
+          source = tokenSourceAndIsLP[1],
+          isLP = tokenSourceAndIsLP[2];
+      lineNum += (token.split(/\r\n?|[\n\u2028\u2029]/).length - 1);
+
+      if (!/\S/.test(token)) { continue; }
+    } catch (ex) {
+      error = true;
+      if (typeof console !== "undefined") {
+        console.error("%o\n%s", ex, ex.stack);
+      }
+    }
+
+    var cell, row;
+    function startRow() {
+      row = document.createElement("TR");
+      tokensTableHeader.parentNode.appendChild(row);
+    }
+
+    function startCell() {
+      cell = document.createElement("TD");
+      row.appendChild(cell);
+    }
+
+    function emitText(text) {
+      cell.appendChild(document.createTextNode("" + text));
+    }
+
+    if (error) {
+      startRow();
+      startCell();
+      cell.colSpan = 4;
+      cell.align = "center";
+      emitText("ERROR");
+    } else {
+      startRow();
+      startCell();
+      cell.className = "token";
+      emitText(
+          token.replace(/\\/g, "\\\\").replace(/\n/g, "\\n")
+          .replace(/\r/g, "\\r"));
+      startCell();
+      emitText(isLP);
+      startCell();
+      emitText(inLiteralPortion);
+      startCell();
+      emitText(closesInnermostSubstitution);
+    }
+    startCell();
+    emitText(startLineNum);
+    if (error) {
+      break;
+    }
+  }
+}
+</script>
+
+</body></html>
