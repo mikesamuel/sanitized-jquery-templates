@@ -65,12 +65,9 @@ var safehtml, safeHtmlChooseEscapers;
     return cache[key] = sanitizerFunctions;
   };
 
-  safehtml = function (parts) {
-    var literalParts = [];
-    var n = parts.length >> 1;
-    for (var i = n + 1; --i >= 0;) {
-      literalParts[i] = parts[i << 1];
-    }
+  safehtml = function (callSiteId) {
+    var literalParts = callSiteId.rawLP;
+    var n = literalParts.length - 1;
     var sanitizers = safeHtmlChooseEscapers(literalParts);
 
     if (USE_PRETTY_QUASI) {
@@ -78,17 +75,17 @@ var safehtml, safeHtmlChooseEscapers;
       var escapedArgs = [];
       for (var i = 0; i < n; ++i) {
 	var sanitizer = sanitizers[i];
-        escapedArgs[i] = sanitizer(originals[i] = parts[(i << 1) | 1]);
+        escapedArgs[i] = sanitizer(originals[i] = arguments[i + 1]);
       }
       return prettyQuasi(
           literalParts, escapedArgs, originals, sanitizers.prettyPrintDetails,
           SanitizedHtml);
     } else {
       var outputBuffer = [];
-      for (var i = 0, j = -1; i < n; ++i) {
+      for (var i = 0, j = -1; i < n;) {
         outputBuffer[++j] = literalParts[i];
 	var sanitizer = sanitizers[i];
-        outputBuffer[++j] = sanitizer(parts[j]);
+        outputBuffer[++j] = sanitizer(arguments[++i]);
       }
       outputBuffer[++j] = literalParts[n];
       return new SanitizedHtml(outputBuffer.join(''));

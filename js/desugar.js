@@ -6,8 +6,64 @@
 
 // Requires contextUpdate.js for its regex lexical prediction function.
 
-var CURRIED = false;
-var THUNKED = false;
+var SLOTTED = false;
+
+var JS_TOKEN_RE = new RegExp("^(?:" + [
+      // Space
+      "[\\s\ufeff]+",
+      // A block comment
+      "/\\*(?:[^*]|\\*+[^*/])*\\*+/",
+      // A line comment
+      "//.*",
+      // A string
+      "\'(?:[^\\\\\'\\r\\n\\u2028\\u2029]|\\\\(?:\\r\\n|[\\s\\S]))*\'",
+      "\"(?:[^\\\\\"\\r\\n\\u2028\\u2029]|\\\\(?:\\r\\n|[\\s\\S]))*\"",
+      // Number
+      // (before punctuation to prevent breaking around decimal point)
+      "0x[0-9a-f]+",
+      "(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?",
+      // IdentifierName (ignoring non-Latin letters)
+      "[_$a-z][\\w$]*",
+      // Punctuation
+      [ ".", "[", "]", "(", ")", "++", "--", "!", "~", "+", "-",
+        "*", "%", "+", "-", "<<", ">>", ">>>", "<", "<=", ">", ">=",
+        "==", "!=", "===", "!==", "&", "^", "|", "&&", "||", "?",
+        ":", "=", "+=", "-=", "*=", "%=", "<<=", ">>=", ">>>=",
+        "&=", "^=", "|=", "&=", ",", "{", "}", ";", "/", "/=" ]
+        // Sort longest first so that we can join on | to get a
+        // regular expression that matches the longest punctuation token
+        // possible.
+        .sort(function (a, b) { return b.length - a.length; })
+        // Escape for RegExp syntax.
+        .map(function (x) { return x.replace(/./g, "\\$&"); })
+        .join("|")]
+      .join("|") + ")",
+      "i");
+
+var JS_REGEXP_RE = new RegExp(
+    '^/(?:' +
+      // Any char except the start of an escape sequence or charset or an end
+      // delimiter,
+      '[^/\\\\[]' +
+      // or an escape sequence,
+      '|\\\\[^\\r\\n\\u2028\\u2029\\/]' +
+      // or a character set
+      '|\\[(?:[^\\]\\\\\\r\\n\\u2028\\u2029]|\\\\.)*\\]' +
+      // one (since // is not a regex) or more times, ended by a slash, and
+      // with an optional flag set.
+    ')+/[gim]*');
+
+
+function tokenizeNoQuasis(source, allowRegexp) {
+  var match = source.match(
+      allowRegexp && /^\/[^*/]/.test(source)
+      ? JS_REGEXP_RE
+      : JS_TOKEN_RE);
+  if (!match) {
+    throw new Error("No token at start of " + source.substring(0, 20));
+  }
+  return match[0];
+}
 
 
 /**
@@ -16,213 +72,271 @@ var THUNKED = false;
  * This does not deal with non-Latin letters or digits in identifiers.
  */
 function desugar(sugaryJs) {
-  function reportFailure() {
-    try {
-      console.trace();
-      console.error('Failed to lex ' + JSON.stringify(toLex) + ' preceded by '
-                    + JSON.stringify(sugaryJs.substring(0, sugaryJs.length - toLex.length)));
-    } catch (ex) {
-      // suppress failure to log
-    }
-  }
 
-  var quasiEscRe = new RegExp(
-      '[$]\\\\(?:' +  // $\
-        'u([0-9A-Fa-f]{4})' +  // Unicode escape with hex in group 1
-        '|x([0-9A-Fa-f]{2})' +  // Hex pair escape with hex in group 2
-        '|([0-3][0-7]{1,2}|[4-7][0-7])' +  // Octal escape with octal in group 3
-        '|(\r\n?|[\u2028\u2029\n])' +  // Line continuation in group 4
-        '|([^xu\r\n\u2028\u2029])' +  // Single characer escape in group 5
-      ')',
-      'g');
+  var inLiteralPortion = false;
 
-  function quasiRawToJs(raw) {
-    return JSON.stringify(raw.replace(
-        quasiEscRe,
-        function (_, hex1, hex2, octal, lineCont, single) {
-          if (hex1 || hex2) { return Integer.parseInt(hex1 || hex2, 16); }
-          if (octal) { return Integer.parseInt(octal, 8); }
-          if (lineCont) { return ''; }
-          switch (single) {
-            case 'n': return '\n';
-            case 'r': return '\r';
-            case 't': return '\t';
-            case 'v': return '\x08';
-            case 'f': return '\f';
-            case 'b': return '\b';
-            default: return single;
-          }
-        }));
-  }
+  var closesInnermostSubstitution = [];
 
-  function consume(match) {
-    toLex = toLex.substring(match[0].length);
-  }
-
-  var QUOTED_STRING_RE = (
-      '"(?:[^"\\\\]|\\\\[^\r\n\u2028\u2029])*"' +
-      '|\'(?:[^\'\\\\]|\\\\[^\r\n\u2028\u2029])*\'');
-
-  var desugared = [];
   var lastToken = null;
-  var tokenRe = new RegExp(
-      '^(?:' +
-        // Ignorable
-        '\\s+' + // space
-        '|//.*?' + // line comment
-        '|/\\*(?:[^*]+|\\*+[^\\*/])*\\*+/' +  // block comment
-        '|\\\\[\r\n\u2028\u2029]' +  // line continuation
-        // Significant tokens
-        '|(' +
-          '[a-z_$][a-z0-9_$]*' +  // keyword or ident
-          // Syntactic sugar.
-          '(`)?' +
-          '|\\.[0-9]+(?:e[+-]?[0-9]+)?' +  // fraction
-          '|0x[0-9a-f]+' +  // hex
-          '|[0-9]+(?:\\.[0-9])?(?:e[+-]?[0-9]+)?' +  // decimal
-          '|' + QUOTED_STRING_RE +
-          '|[^.a-z0-9"\'/\\s\u2028\u2029]+' +  // run of punctuation
-          '|\\.(?![0-9])' +  // punctuation dot
-          '|/' +  // div op part or regex start
-        '))', 'i');
-  var reBodyRe = /^(?:[^\/\\\[]|\\[^\r\n\u2028\u2029\/]|\[(?:[^\]\\\r\n\u2028\u2029]|\\.)*\])+\/[gim]*/;
-  var quasiBodyRe = new RegExp(
-      '^(?:' +
-        '`' +  // End of quasi.
-        '|(?:' +  // Literal text
-          '[^`\\\\$]' +  // Non-special character.
-          '|\\\\[\\s\\S]' +  // Raw escape sequence prefix
-          '|[$](?![\{a-z_$])' +  // Raw dollar-sign
-        ')+' +
-        '|[$][\{]' +  // Start of an interpolation
-        '|[$]([a-z_$][a-z0-9_$]*)' +  // An abbreviated interpolation
-      ')',
-      'i');
 
-  var interpBodyRe = new RegExp(
-      '^(?:' +
-        // A word optionally followed by a quoted string.
-        '[a-z_$][a-z0-9_$]*`?' +
-        '|' + QUOTED_STRING_RE +
-        '|[\\{\\}]' +
-        '|[^\\{\\}"\'`a-z_$]+' +
-      ')', 'i');
+  function tokenize(source) {
+    var tokenLen,
+        tokenIsLiteralPortion = false;
 
-  for (var toLex = sugaryJs; toLex;) {
-    var m = toLex.match(tokenRe);
-    if (!m) {
-      reportFailure();
-      return sugaryJs;
-    }
-    consume(m);
-    var token = m[0];
-    if (!m[1]) {
-      // ignorable content
-      desugared.push(token);
-      continue;
-    }
-    if (token === '/') {
-      if (lastToken === null || isRegexPreceder(lastToken)) {  // Parse rest of regular expression body.
-        var reBody = toLex.match(reBodyRe);
-        if (!reBody) {
-          reportFailure();
-          return sugaryJs;
+    for (var i = 0, n = source.length; i < n; ++i) {
+      var ch = source.charAt(i);
+
+      if (inLiteralPortion && ch === '`') {
+        inLiteralPortion = false;
+        tokenIsLiteralPortion = true;
+        tokenLen = i + 1;
+        break;
+
+      } else if (inLiteralPortion && ch == '\\') {
+        if (++i === n) { throw Error(); }
+
+      } else if (inLiteralPortion && ch === '$'
+                 && source.charAt(i + 1) === '{') {
+        if (i) {  // Emit the literal portion parsed thus far.
+          tokenLen = i;
+          tokenIsLiteralPortion = true;
+          break;
         }
-        consume(reBody);
-        token += reBody[0];
+        inLiteralPortion = false;
+        closesInnermostSubstitution.push(1);
+        tokenLen = i + 2;
+        break;
+
+      } else if (inLiteralPortion) {
+        // Let for-loop increment i.
+
+      } else if (ch === '{') {
+        closesInnermostSubstitution.push(0);
+
+      } else if (ch === '}') {
+        inLiteralPortion = !!closesInnermostSubstitution.pop();
+        tokenLen = i + 1;
+        break;
+
+      } else if (ch === '`') {
+        inLiteralPortion = true;
+
+      } else {
+        tokenLen = tokenizeNoQuasis(
+            source,
+            !lastToken
+            || (/^\/|`$/.test(lastToken) ? /^\/=?$/.test(lastToken)
+                : isRegexPreceder(lastToken))
+            ).length;
+        break;
       }
-    } else if (m[2]) {  // Consume and desugar the rest of quasi body.
-      function desugarQuasiBody(startToken) {
-        var startTokenLen = startToken.length;
-        var quasiName = startToken.substring(0, startTokenLen - 1);
-        var quasiDelim = startToken.charAt(startTokenLen - 1);
+    }
+    if (!tokenLen) { throw Error('No valid token at the start of ' + source); }
+    var token = source.substring(0, tokenLen);
 
-        var literalStrings = [];
-        var interpolations = [];
-        var buffer = [];
+    // Keep track of the last non-comment, non-whitespace token so we can
+    // use it to determine when a slash starts a regex literal.
+    if (!/^(?:\s|\/[*/])/.test(token)) {
+      lastToken = token;
+    }
 
-        while (toLex) {
-          var quasiBodyMatch = toLex.match(quasiBodyRe);
-          if (!quasiBodyMatch) { console.trace(); return null; }
-          consume(quasiBodyMatch);
-          var quasiBodyToken = quasiBodyMatch[0];
-          if (quasiBodyToken === quasiDelim) {   // End of the quasi.
-            literalStrings.push(quasiRawToJs(buffer.join('')));
-            if (CURRIED) {
-              return '(' + quasiName + '([' + literalStrings.join(', ') + '])(['
-                  + interpolations.join(', ') + ']))';
-            } else {
-              var interleaved = [literalStrings[0]];
-              for (var i = 0, n = interpolations.length; i < n;) {
-                interleaved.push(interpolations[i], literalStrings[++i]);
-              }
-              return '(' + quasiName + '([' + interleaved.join(', ') + ']))';
-            }
-          } else if (quasiBodyToken === '${') {  // A nested expression.
-            literalStrings.push(quasiRawToJs(buffer.join('')));
-            buffer.length = 0;
-            buffer.push('(');
+    return [token, source.substring(tokenLen), tokenIsLiteralPortion];
+  }
 
-            var bracketDepth = 1;
-            bracket_loop:
-            while (toLex) {
-              var interpBodyMatch = toLex.match(interpBodyRe);
-              if (!interpBodyMatch) { console.trace(); return null; }
-              consume(interpBodyMatch);
-              var interpBodyToken = interpBodyMatch[0];
-              var lastChar = interpBodyToken.charAt(interpBodyToken.length - 1);
-              switch (lastChar) {
-                case '{': ++bracketDepth; break;
-                case '}':
-                  if (!--bracketDepth) { break bracket_loop; }
-                  break;
-                case '`':  // A nested quasi.
-                  interpBodyToken = desugarQuasiBody(interpBodyToken);
-                  if (!interpBodyToken) { console.trace(); return null; }
-                  break;
-              }
-              buffer.push(interpBodyToken);
-            }
-            if (buffer.length == 1) { buffer.push('void 0'); }
-            buffer.push(')');
-            var interpBody = buffer.join('');
-            buffer.length = 0;
-            if (THUNKED) {
-              if (interpBody.charAt(1) === '=') {
-                interpBody = '(' + interpBody.substring(2);
-                interpolations.push(
-                    'function () { return arguments.length ? '
-                    + interpBody + ' = arguments[0] : ' + interpBody + '; }');
-              } else {
-                interpolations.push('function () { return ' + interpBody + '; }');
-              }
-            } else {
-              interpolations.push(interpBody);
-            }
-          } else if (/^[$][a-z_$][a-z0-9_$]*$/.test(quasiBodyToken)) {
-            literalStrings.push(quasiRawToJs(buffer.join('')));
-            if (THUNKED) {
-              interpolations.push(
-                  'function () { return (' + quasiBodyToken.substring(1) + '); }');
-            } else {
-              interpolations.push('(' + quasiBodyToken.substring(1) + ')');
-            }
-            buffer.length = 0;
+
+  // Given an input like
+  //   var x = `foo$bar`, y = f`baz${boo.far}faz`;
+  // produce an AST like
+  //   ['var', 'x', '=',
+  //     ['foo',
+  //       ['bar'],
+  //      ''],
+  //     ',', 'y', '=', 'f',
+  //     ['baz',
+  //       ['boo', '.', 'far'],
+  //      'faz'],
+  //     ';']
+  // where leaf strings in arrays at even levels are
+  // expression tokens and leaf string in arrays at odd
+  // levels are raw literal portions.
+
+  var root = [], top = root;
+  var stack = [root];
+
+  var toLex = sugaryJs;
+  while (toLex) {
+    var tokenizeResult = tokenize(toLex);
+    var token = tokenizeResult[0];
+    toLex = tokenizeResult[1];
+    var isLiteralPortion = tokenizeResult[2];
+
+    if (isLiteralPortion) {
+      var ends = !inLiteralPortion;
+      if (ends) {
+        if (token.charAt(token.length - 1) !== '`') { throw new Error; }
+        token = token.substring(0, token.length - 1);
+      }
+      var starts = token.charAt(0) === '`';
+      if (starts) {
+        var quasiNode = [];
+        top.push(quasiNode);
+        stack.push(top = quasiNode);
+        token = token.substring(1);
+      } else {
+        top = stack[--stack.length - 1];
+      }
+      if ((stack.length & 1)) {
+        throw new Error;
+      }
+
+      // "foo $bar baz" -> ["foo ", "bar", " baz"];
+      var lastSplit = 0, tokenlen = token.length;
+      for (var i = 0; i < tokenlen;) {
+        var ch = token.charAt(i);
+        if (ch === '\\') {
+          i += 2;
+        } else if (ch === '$') {
+          var match = token.substring(i + 1).match(/^[a-z_$][\w$]*/i);
+          if (match) {
+            // Emit the literal portion between the last abbreviated $foo
+            // style interpolation and this one, and an embedded parse tree
+            // node like ["${", identifier, "}"].
+            top.push(token.substring(lastSplit, i), ["${", match[0], "}"]);
+            lastSplit = i += match[0].length + 1;
           } else {
-            buffer.push(quasiBodyToken);
+            ++i;
+          }
+        } else {
+          ++i;
+        }
+      }
+      top.push(token.substring(lastSplit));
+
+      if (ends) {
+        top = stack[--stack.length - 1];
+      }
+    } else {
+      if (!(stack.length & 1)) {
+        var substitutionNode = [];
+        top.push(substitutionNode);
+        stack.push(top = substitutionNode);
+      }
+      top.push(token);
+    }
+  }
+
+  // Walk the tree to desugar in-situ, a function call, and to create a hoisted
+  // declaration.
+  var hoistedDeclarations = [];
+  // Declarations that should appear at the top of the module.
+  var moduleContents = [];  // An array of output tokens.
+  var callSiteIdCounter = -1;
+  var priorInModule = '';
+
+  function walkParseTree(node, isLiteralPortion) {
+    var literalPortions, callSiteId;
+    if (isLiteralPortion) {
+      literalPortions = [];
+      callSiteId = '$$callSite' + (++callSiteIdCounter);
+      if (!/^[$a-z+]/i.test(priorInModule)) {
+        if (moduleContents.length
+            && /\w$/.test(moduleContents[moduleContents.length - 1])) {
+          moduleContents.push(" ");
+        }
+        moduleContents.push("String", ".", "interp");
+      }
+      moduleContents.push("(", callSiteId);
+    }
+    for (var i = 0, n = node.length; i < n; ++i) {
+      var child = node[i];
+      if ('string' === typeof child) {
+        if (isLiteralPortion) {
+          literalPortions.push(child);
+          priorInModule = '`';
+        } else {
+          // Make sure that for substitutions, the token sequence
+          //   ${ x + y }
+          // is emitted as
+          //   ( x + y )
+          if ('${' === node[0]) {
+            if (i === 0) {
+              if (SLOTTED) {
+                moduleContents.push(
+                    "(", "function", "(", ")", "{", "return", " ");
+                if (node[1] === "=") {
+                  moduleContents.push("arguments", ".", "length", "?", "(");
+                  priorInModule = "(";
+                  walkParseTree(node.slice(2, node.length - 1), false);
+                  moduleContents.push(
+                      ")", "=", "arguments", "[", "0", "]", ":", "(");
+                }
+                ++i;
+                continue;
+              } else {
+                child = "(";
+              }
+            } else if (i === n - 1 && child === '}') {
+              if (SLOTTED) {
+                moduleContents.push(")", ";", "}");
+              }
+              child = ")";
+            }
+          }
+          moduleContents.push(child);
+          if (!/^(?:\s|\/[/*])/.test(child)) {
+            priorInModule = child;
           }
         }
-        return null;
-      }
-
-      token = desugarQuasiBody(token);
-      if (!token) {
-        reportFailure();
-        return sugaryJs;
+      } else {
+        if (isLiteralPortion) {
+          // Separate substitution expressions in argument list.
+          // The call site id is always the first actual, so we
+          // can reliably assume that a comma followed by an expression
+          // is valid on moduleContents.
+          moduleContents.push(",", " ");
+        }
+        walkParseTree(child, !isLiteralPortion);
       }
     }
-    lastToken = token;
-    desugared.push(token);
+    if (isLiteralPortion) {
+      moduleContents.push(")");
+      hoistedDeclarations.push(
+          "var " + callSiteId
+          + " = Object.freeze({\n    rawLP: Object.freeze("
+          + JSON.stringify(literalPortions)
+          + "),\n    expandedLP: Object.freeze("
+          + JSON.stringify(literalPortions.map(expandEscapeSequences))
+          + ")\n  });\n");
+    }
   }
-  return desugared.join('');
+  walkParseTree(root, false);
+
+  // Don't hoist the declarations above the directive prologue.
+  var moduleDeclarationStart = 0;
+  for (var i = 0; i < moduleContents.length; ++i) {
+    // If token is not a comment, whitespace, string, or semi then exit.
+    if (!/^(?:\/[/*]|\s|["';])/.test(moduleContents[i])) {
+      break;
+    }
+    // The module declarations start after the last semicolon ending the
+    // directive prologue.
+    if (moduleContents[i] === ';') {
+      moduleDeclarationStart = i + 1;
+    }
+  }
+
+  return moduleContents.slice(0, moduleDeclarationStart).join('')
+      + (moduleDeclarationStart ? '\n' : '')
+      + hoistedDeclarations.join('')
+      + moduleContents.slice(moduleDeclarationStart).join('');
 }
+
+String.interp = function (callSiteId, sve) {
+  var rawStrs = callSiteId.expandedLP;
+  var out = [];
+  for (var i = 0, k = -1, n = rawStrs.length; i < n;) {
+    out[++k] = rawStrs[i];
+    out[++k] = arguments[++i];
+  }
+  return out.join('');
+};

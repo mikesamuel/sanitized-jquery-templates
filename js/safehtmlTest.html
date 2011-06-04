@@ -11,6 +11,7 @@ if (/[?&]compiled/.test(location.search)) {
   document.title += ' compiled';
 } else {
   document.write(
+      '<script src="js-str-decode.js"><\/script>' +
       '<script src="contextDefs.js"><\/script>' +
       '<script src="contextUpdate.js"><\/script>' +
       '<script src="escapers.js"><\/script>' +

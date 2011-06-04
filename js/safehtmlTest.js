@@ -1,11 +1,10 @@
-function interleave(literalParts, values) {
-  var arr = [literalParts[0]];
-  var n = values.length;
-  for (var i = 0, j = 0; i < n;) {
-    arr[++j] = values[i];
-    arr[++j] = literalParts[++i];
-  }
-  return arr;
+function invokeQuasiHandler(quasiHandler, literalParts, values) {
+  return quasiHandler.apply(
+      null,
+      [{
+         rawLP: literalParts,
+         expandedLP: literalParts.map(expandEscapeSequences)
+       }].concat(values));
 }
 
 
@@ -22,7 +21,7 @@ function testSafeHtmlGoodInputs() {
       '<a href="http://www.google.com/search?q=Hello%20World"'
       + ' onclick=alert(&#39;Hello&#32;World&#39;)'
       + ' style="color: red">Hello &amp; Goodbye</a>',
-      safehtml(interleave(template, values)).toString());
+      invokeQuasiHandler(safehtml, template, values).toString());
 }
 
 
@@ -39,5 +38,5 @@ function testSafeHtmlBadInputs() {
       '<a href="#zSafehtmlz?q=%22%3E%3Cscript%3Ealert%2813%29%3C%2Fscript%3E"'
       + ' onclick=alert(&#39;\\x22Hello&#32;World&#39;)'
       + ' style="color: zSafehtmlz">&lt;script&gt;alert(1337)&lt;/script&gt;</a>',
-      safehtml(interleave(template, values)).toString());
+      invokeQuasiHandler(safehtml, template, values).toString());
 }

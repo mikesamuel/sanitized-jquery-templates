@@ -35,27 +35,6 @@ var msgPartsDecompose = (function () {
       ')',
       'g');
 
-  /** Given a literal chunk of text, decodes any JavaScript escape sequences. */
-  function decode(raw) {
-    return raw.replace(
-        escRe,
-        function (_, hex1, hex2, octal, lineCont, single) {
-          if (hex1 || hex2) { return Integer.parseInt(hex1 || hex2, 16); }
-          if (octal) { return Integer.parseInt(octal, 8); }
-          if (lineCont) { return ''; }
-          switch (single) {
-            case 'n': return '\n';
-            case 'r': return '\r';
-            case 't': return '\t';
-            case 'v': return '\x0b';
-            case 'f': return '\f';
-            case 'b': return '\b';
-            default: return single;
-          }
-        });
-  }
-
-  var cache = {};
   var cacheLen = 0;
 
   /**
@@ -64,17 +43,10 @@ var msgPartsDecompose = (function () {
    * formatting dynamic values.
    */
   function msgPartsDecompose(literalParts) {
-    var n = literalParts.length;
-    for (var i = 0; i < n; ++i) {
-      literalParts[i] = decode(literalParts[i]).replace(/\u0000/g, '');
-    }
-    var key = literalParts.join('\u0000');
-//  if (cache.hasOwnProperty(key)) { return cache[key]; }
-
     var literalPartsNoMetadata = [literalParts[0]];
     var formatSpecifiersRe = /^:(?:([0-9a-z.\-+\/]*) ?|\(([^\)]*)\))/i;
     var inputXforms = [];
-    for (var i = 1; i < n; ++i) {
+    for (var i = 1, n = literalParts.length; i < n; ++i) {
       var literalPart = literalParts[i];
       var formatSpecifiersMatch = literalPart.match(formatSpecifiersRe);
       var formatSpecifiers = null;
@@ -82,7 +54,7 @@ var msgPartsDecompose = (function () {
         formatSpecifiers = formatSpecifiersMatch[1] || formatSpecifiersMatch[2];
         literalPart = literalPart.substring(formatSpecifiersMatch[0].length);
       }
-      literalPartsNoMetadata[i] = decode(literalPart);
+      literalPartsNoMetadata[i] = expandEscapeSequences(literalPart);
       inputXforms[i - 1] = (function (formatSpecifiers) {
         return function (value) {
           if (value && 'function' === typeof value.formatToString) {
@@ -93,9 +65,7 @@ var msgPartsDecompose = (function () {
       })(formatSpecifiers);
     }
 
-    if (cacheLen >= 50) { cache = {}; cacheLen = 0; }
-
-    return cache[key] = {
+    return {
       literalParts: literalPartsNoMetadata,
       inputXforms: inputXforms
     };
@@ -108,25 +78,20 @@ var msgPartsDecompose = (function () {
  * A quasi handler that allows format specifiers using the
  * syntax described at the top of this file.
  */
-var msg = function (parts) {
-  var literalParts = [];
-  var n = parts.length >> 1;
-  for (var i = n + 1; --i >= 0;) {
-    literalParts[i] = parts[i << 1];
-  }
-
-  var decomposed = msgPartsDecompose(literalParts);
-  literalParts = decomposed.literalParts;
+var msg = function (callSiteId) {
+  var decomposed = msgPartsDecompose(callSiteId.rawLP);
   var inputXforms = decomposed.inputXforms;
+  var literalParts = decomposed.literalParts;
+  // TODO: cache inputXforms and literalParts without metadata using callSiteId.
 
   var formattedArgs = [];
   var originals = [];
+  var n = literalParts.length - 1;
   for (var i = 0; i < n; ++i) {
     var xform = inputXforms[i];
-    formattedArgs[i] = xform(originals[i] = parts[(i << 1) | 1]);
+    formattedArgs[i] = xform(originals[i] = arguments[i + 1]);
   }
-  return prettyQuasi(
-      literalParts, formattedArgs, originals, null, String);
+  return prettyQuasi(literalParts, formattedArgs, originals, null, String);
 };
 
 /** Produces a padding string with the specified number of zeroes. */
@@ -153,9 +118,11 @@ function nSpaces(n) {
 
 /** Number formatting according to the string-format spec. */
 Number.prototype.formatToString = function (formatSpecifiers) {
-  var alwaysSign, leftAlign, alternate, padWithZero, width, precision, type = 'g';
+  var alwaysSign, leftAlign, alternate, padWithZero, width, precision,
+      type = 'g';
   if (formatSpecifiers != null) {
-    var match = formatSpecifiers.match(/^([+\-#0]*)([1-90-9*]+)?(?:\.([0-9]+))?([dfFeEgGxXobs])?$/);
+    var match = formatSpecifiers.match(
+        /^([+\-#0]*)([1-90-9*]+)?(?:\.([0-9]+))?([dfFeEgGxXobs])?$/);
     if (match) {
       var flags = match[1] || '';
       alwaysSign = flags.indexOf('+') >= 0;

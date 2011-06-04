@@ -1,10 +1,10 @@
 // A quasi handler for building regular expressions.
 
-function re(parts) {
+function re(callSiteId) {
+  var lp = callSiteId.rawLP;
   var buffer = [];
-  var n = parts.length;
-  var lastIndex = n - 1;
-  var lastPart = parts[lastIndex];
+  var n = lp.length - 1;
+  var lastPart = lp[n];
   var flags = lastPart.match(/:([gim]+)$/);
   if (flags) {
     lastPart = lastPart.substring(
@@ -14,20 +14,20 @@ function re(parts) {
   // TODO: maybe fake the 's' flag by rewriting '.'.
   var specials = /[^A-Za-z0-9\s]/g;
 
-  for (var i = 0; i < lastIndex;) {
-    buffer[i] = parts[i];
-    ++i;
-    var substitution = parts[i];
+  var i = 0, k = -1;
+  while (i < n) {
+    buffer[++k] = lp[i++];
+    var substitution = arguments[i];
     if (substitution instanceof RegExp) {
       var patternText = substitution.toString();
       substitution = patternText.substring(1, patternText.lastIndexOf('/'));
-      // TODO: if flags includes i, then expand all letters to character classes.
+      // TODO: if substitution flags includes i and flags does not, then expand
+      // all letters to character classes.
     } else {
       substitution = String(substitution).replace(specials, '\\$&');
     }
-    buffer[i] = substitution;
-    ++i;
+    buffer[++k] = substitution;
   }
-  buffer[lastIndex] = lastPart;
+  buffer[++k] = lastPart;
   return new RegExp(buffer.join(''), flags);
 }

@@ -76,4 +76,10 @@ var cannedExamples = [
     result: (
       '<table><tr><td>Unicorns</td><td>Sunbeams</td><td>Puppies</td></tr>'
       + '<tr><td>&lt;3</td><td>&lt;3</td><td>&lt;3</td></tr></table>')
-  }];
+  },
+
+  { name: "Optional Quasi Tag",
+    sugaryJs: "`Hello, ${'World'}!`",
+    result: 'Hello, World!'
+  }
+];

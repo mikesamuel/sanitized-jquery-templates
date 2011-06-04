@@ -11,7 +11,8 @@ function testSimpleJs() {
   assertDesugarsToSelf('1e-6');
   assertDesugarsToSelf('"foo bar"');
   assertDesugarsToSelf("'foo bar'");
-  assertDesugarsToSelf("for (var i = 0; i < 10; ++i) { alert('I love to \\'count\\''); }");
+  assertDesugarsToSelf(
+      "for (var i = 0; i < 10; ++i) { alert('I love to \\'count\\''); }");
   assertDesugarsToSelf("foo");
 }
 
@@ -26,59 +27,117 @@ function testBackquotesInStringsAndRegexs() {
   assertDesugarsToSelf('n /= /`/i');
 }
 
+function testEmptyQuasi() {
+  assertEquals(
+      [
+        'var $$callSite0 = Object.freeze({',
+        '    rawLP: Object.freeze([""]),',
+        '    expandedLP: Object.freeze([""])',
+        '  });',
+        'var x = String.interp($$callSite0)'].join('\n'),
+      desugar('var x = ``'));
+  assertEquals(
+      [
+        'var $$callSite0 = Object.freeze({',
+        '    rawLP: Object.freeze([""]),',
+        '    expandedLP: Object.freeze([""])',
+        '  });',
+        'foo($$callSite0)'].join('\n'),
+      desugar('foo``'));
+}
+
 function testSimpleQuasi() {
-  assertEquals('(foo(["foo"]))', desugar('foo`foo`'));
+  assertEquals(
+      [
+        'var $$callSite0 = Object.freeze({',
+        '    rawLP: Object.freeze(["foo"]),',
+        '    expandedLP: Object.freeze(["foo"])',
+        '  });',
+        'foo($$callSite0)'
+        ].join('\n'),
+    desugar('foo`foo`'));
 }
 
 function testQuasiOneInterp() {
-  assertEquals(
-      '(foo(["foo ", (x), " bar"]))',
-      desugar('foo`foo ${x} bar`'));
-}
-
-function testQuasiOneAbbreviatedInterp() {
-  assertEquals(
-      '(foo(["foo ", (x), " bar"]))',
-      desugar('foo`foo $x bar`'));
+  var golden = [
+      'var $$callSite0 = Object.freeze({',
+      '    rawLP: Object.freeze(["foo "," bar"]),',
+      '    expandedLP: Object.freeze(["foo "," bar"])',
+      '  });',
+      'foo($$callSite0, (x))'].join('\n');
+  assertEquals(golden, desugar('foo`foo ${x} bar`'));
+  assertEquals(golden, desugar('foo`foo $x bar`'));
 }
 
 function testQuasiEscape() {
   assertEquals(
-      '(foo(["foo ", (x), "\\nbar"]))',
-      desugar('foo`foo ${x}$\\nbar`')
+      [
+        'var $$callSite0 = Object.freeze({',
+        '    rawLP: Object.freeze(["foo ","\\\\nbar"]),',
+        '    expandedLP: Object.freeze(["foo ","\\nbar"])',
+        '  });',
+        'foo($$callSite0, (x))'
+      ].join('\n'),
+      desugar('foo`foo ${x}\\nbar`')
       // There are multiple legal ways to encode a quasi quote.
       .replace('\\u000a', '\\n'));
 }
 
-function testQuasiRawEscape() {
-  assertEquals(
-      '(foo(["foo ", (x), "\\\\nbar"]))',
-      desugar('foo`foo ${x}\\nbar`'));
-}
-
 function testBracketsInQuasiInterp() {
   assertEquals(
-      '(foo(["foo ", (f({a: b})), "\\\\nbar"]))',
-      desugar('foo`foo ${f({a: b})}\\nbar`'));
+      [
+        'var $$callSite0 = Object.freeze({',
+        '    rawLP: Object.freeze(["foo "," bar"]),',
+        '    expandedLP: Object.freeze(["foo "," bar"])',
+        '  });',
+        'foo($$callSite0, (f({a: b})))'
+      ].join('\n'),
+      desugar('foo`foo ${f({a: b})} bar`'));
 }
 
 function testStringInQuasiInterp() {
   assertEquals(
-      '(foo(["foo ", (f("`")), "\\\\nbar"]))',
-      desugar('foo`foo ${f("`")}\\nbar`'));
+      [
+        'var $$callSite0 = Object.freeze({',
+        '    rawLP: Object.freeze(["foo "," bar"]),',
+        '    expandedLP: Object.freeze(["foo "," bar"])',
+        '  });',
+        'foo($$callSite0, (f("`")))'
+      ].join('\n'),
+      desugar('foo`foo ${f("`")} bar`'));
 }
 
 function testNestedQuasi() {
   assertEquals(
-      '(foo(["foo ", (f((bar(["-", (x), "-"])))), "\\\\nbar"]))',
-      desugar('foo`foo ${f(bar`-${x}-`)}\\nbar`'));
+      [
+        'var $$callSite1 = Object.freeze({',
+        '    rawLP: Object.freeze(["-","-"]),',
+        '    expandedLP: Object.freeze(["-","-"])',
+        '  });',
+        'var $$callSite0 = Object.freeze({',
+        '    rawLP: Object.freeze(["foo "," bar"]),',
+        '    expandedLP: Object.freeze(["foo "," bar"])',
+        '  });',
+        'foo($$callSite0, (f(bar($$callSite1, (x)))))'
+      ].join('\n'),
+      desugar('foo`foo ${f(bar`-${x}-`)} bar`'));
 }
 
-if (THUNKED) {
-  testAssignableQuasiHole = function testAssignableQuasiHole() {
+function testAssignableQuasiHole() {
+  SLOTTED = true;
+  try {
     assertEquals(
-        '(foo(["foo ", "\\\\nbar"])' +
-        '([function () { return arguments.length ? (x.y) = arguments[0] : (x.y); }]))',
-        desugar('foo`foo ${=x.y}\\nbar`'));
-  };
+        [
+          'var $$callSite0 = Object.freeze({',
+          '    rawLP: Object.freeze(["foo "," bar"]),',
+          '    expandedLP: Object.freeze(["foo "," bar"])',
+          '  });',
+          'foo($$callSite0, ' +
+            '(function(){' +
+            'return arguments.length?(x.y)=arguments[0]:(x.y);' +
+            '}))'].join('\n'),
+        desugar('foo`foo ${=x.y} bar`'));
+  } finally {
+    SLOTTED = false;
+  }
 }

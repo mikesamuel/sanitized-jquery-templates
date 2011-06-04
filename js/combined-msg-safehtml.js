@@ -15,25 +15,21 @@
 // Requires safehtml.js and messageQuasi.js
 
 // Obeys quasi handler calling conventions.
-function html_msg(parts) {
-  var literalParts = [];
-  var n = parts.length >> 1;
-  for (var i = n + 1; --i >= 0;) {
-    literalParts[i] = parts[i << 1];
-  }
+function html_msg(callSiteId) {
+  var literalParts = callSiteId.rawLP;
 
   var decomposed = msgPartsDecompose(literalParts);
   var inputXforms = decomposed.inputXforms;
   literalParts = decomposed.literalParts;
 
   var sanitizers = safeHtmlChooseEscapers(literalParts);
-  var lastIndex = inputXforms.length;
+  var n = literalParts.length - 1;
 
   if (sanitizers.prettyPrintDetails) {
     var originals = [];
     var escapedArgs = [];
     for (var i = 0; i < n; ++i) {
-      var value = parts[(i << 1) | 1];
+      var value = arguments[i + 1];
       originals[i] = value;
       if (value && typeof value['contentKind'] === 'number') {
         // Exempt sanitized content from formatting.
@@ -51,7 +47,7 @@ function html_msg(parts) {
     for (var i = 0, j = -1; i < n; ++i) {
       outputBuffer[++j] = literalParts[i];
 
-      var value = parts[j];
+      var value = parts[i + 1];
       if (value && typeof value['contentKind'] === 'number') {
         // Exempt sanitized content from formatting.
       } else {
