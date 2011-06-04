@@ -332,7 +332,7 @@ function desugar(sugaryJs) {
 }
 
 String.interp = function (callSiteId, sve) {
-  var rawStrs = callSiteId.expandedLP;
+  var rawStrs = callSiteId['expandedLP'];
   var out = [];
   for (var i = 0, k = -1, n = rawStrs.length; i < n;) {
     out[++k] = rawStrs[i];
