@@ -2,8 +2,10 @@
 
 function raw(callSiteId, sve) {
   var rawStrs = callSiteId.rawLP;
+  var n = rawStrs.length;
+  if (n === 1) { return rawStrs[0]; }
   var out = [];
-  for (var i = 0, k = -1, n = rawStrs.length; i < n;) {
+  for (var i = 0, k = -1; i < n;) {
     out[++k] = rawStrs[i];
     out[++k] = arguments[++i];
   }
