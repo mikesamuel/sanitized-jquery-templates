@@ -107,6 +107,18 @@ function testStringInQuasiInterp() {
       desugar('foo`foo ${f("`")} bar`'));
 }
 
+function testLineTerminatorNormalization() {
+  assertEquals(
+      [
+        'var $$callSite0 = Object.freeze({',
+        '    rawLP: Object.freeze(["-\\\\\\n-\\n-"]),',
+        '    expandedLP: Object.freeze(["--\\n-"])',
+        '  });',
+        'foo($$callSite0)'
+      ].join('\n'),
+      desugar('foo`-\\\r\n-\r\n-`'));
+}
+
 function testNestedQuasi() {
   assertEquals(
       [

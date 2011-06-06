@@ -251,7 +251,9 @@ function desugar(sugaryJs) {
       var child = node[i];
       if ('string' === typeof child) {
         if (isLiteralPortion) {
-          literalPortions.push(child);
+          // Normalize newlines per
+          // http://wiki.ecmascript.org/doku.php?id=proposals:line_terminator_normalization
+          literalPortions.push(child.replace(/\r\n/g, "\n"));
           priorInModule = '`';
         } else {
           // Make sure that for substitutions, the token sequence
