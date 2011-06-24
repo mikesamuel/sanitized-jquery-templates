@@ -16,7 +16,7 @@
 
 // Obeys quasi handler calling conventions.
 function html_msg(callSiteId) {
-  var literalParts = callSiteId['rawLP'];
+  var literalParts = callSiteId['raw'];
 
   var decomposed = msgPartsDecompose(literalParts);
   var inputXforms = decomposed.inputXforms;

@@ -2,8 +2,8 @@ function invokeQuasiHandler(quasiHandler, literalParts, values) {
   return quasiHandler.apply(
       null,
       [{
-         rawLP: literalParts,
-         expandedLP: literalParts.map(expandEscapeSequences)
+         raw: literalParts,
+         expanded: literalParts.map(expandEscapeSequences)
        }].concat(values));
 }
 

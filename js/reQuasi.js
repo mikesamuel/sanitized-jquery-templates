@@ -1,7 +1,7 @@
 // A quasi handler for building regular expressions.
 
 function re(callSiteId) {
-  var lp = callSiteId['rawLP'];
+  var lp = callSiteId['raw'];
   var buffer = [];
   var n = lp.length - 1;
   var lastPart = lp[n];

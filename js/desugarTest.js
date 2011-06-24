@@ -31,16 +31,16 @@ function testEmptyQuasi() {
   assertEquals(
       [
         'var $$callSite0 = Object.freeze({',
-        '    rawLP: Object.freeze([""]),',
-        '    expandedLP: Object.freeze([""])',
+        '    raw: Object.freeze([""]),',
+        '    cooked: Object.freeze([""])',
         '  });',
         'var x = String.interp($$callSite0)'].join('\n'),
       desugar('var x = ``'));
   assertEquals(
       [
         'var $$callSite0 = Object.freeze({',
-        '    rawLP: Object.freeze([""]),',
-        '    expandedLP: Object.freeze([""])',
+        '    raw: Object.freeze([""]),',
+        '    cooked: Object.freeze([""])',
         '  });',
         'foo($$callSite0)'].join('\n'),
       desugar('foo``'));
@@ -50,8 +50,8 @@ function testSimpleQuasi() {
   assertEquals(
       [
         'var $$callSite0 = Object.freeze({',
-        '    rawLP: Object.freeze(["foo"]),',
-        '    expandedLP: Object.freeze(["foo"])',
+        '    raw: Object.freeze(["foo"]),',
+        '    cooked: Object.freeze(["foo"])',
         '  });',
         'foo($$callSite0)'
         ].join('\n'),
@@ -61,8 +61,8 @@ function testSimpleQuasi() {
 function testQuasiOneInterp() {
   var golden = [
       'var $$callSite0 = Object.freeze({',
-      '    rawLP: Object.freeze(["foo "," bar"]),',
-      '    expandedLP: Object.freeze(["foo "," bar"])',
+      '    raw: Object.freeze(["foo "," bar"]),',
+      '    cooked: Object.freeze(["foo "," bar"])',
       '  });',
       'foo($$callSite0, (x))'].join('\n');
   assertEquals(golden, desugar('foo`foo ${x} bar`'));
@@ -73,8 +73,8 @@ function testQuasiEscape() {
   assertEquals(
       [
         'var $$callSite0 = Object.freeze({',
-        '    rawLP: Object.freeze(["foo ","\\\\nbar"]),',
-        '    expandedLP: Object.freeze(["foo ","\\nbar"])',
+        '    raw: Object.freeze(["foo ","\\\\nbar"]),',
+        '    cooked: Object.freeze(["foo ","\\nbar"])',
         '  });',
         'foo($$callSite0, (x))'
       ].join('\n'),
@@ -87,8 +87,8 @@ function testBracketsInQuasiInterp() {
   assertEquals(
       [
         'var $$callSite0 = Object.freeze({',
-        '    rawLP: Object.freeze(["foo "," bar"]),',
-        '    expandedLP: Object.freeze(["foo "," bar"])',
+        '    raw: Object.freeze(["foo "," bar"]),',
+        '    cooked: Object.freeze(["foo "," bar"])',
         '  });',
         'foo($$callSite0, (f({a: b})))'
       ].join('\n'),
@@ -99,8 +99,8 @@ function testStringInQuasiInterp() {
   assertEquals(
       [
         'var $$callSite0 = Object.freeze({',
-        '    rawLP: Object.freeze(["foo "," bar"]),',
-        '    expandedLP: Object.freeze(["foo "," bar"])',
+        '    raw: Object.freeze(["foo "," bar"]),',
+        '    cooked: Object.freeze(["foo "," bar"])',
         '  });',
         'foo($$callSite0, (f("`")))'
       ].join('\n'),
@@ -111,8 +111,8 @@ function testLineTerminatorNormalization() {
   assertEquals(
       [
         'var $$callSite0 = Object.freeze({',
-        '    rawLP: Object.freeze(["-\\\\\\n-\\n-"]),',
-        '    expandedLP: Object.freeze(["--\\n-"])',
+        '    raw: Object.freeze(["-\\\\\\n-\\n-"]),',
+        '    cooked: Object.freeze(["--\\n-"])',
         '  });',
         'foo($$callSite0)'
       ].join('\n'),
@@ -123,12 +123,12 @@ function testNestedQuasi() {
   assertEquals(
       [
         'var $$callSite1 = Object.freeze({',
-        '    rawLP: Object.freeze(["-","-"]),',
-        '    expandedLP: Object.freeze(["-","-"])',
+        '    raw: Object.freeze(["-","-"]),',
+        '    cooked: Object.freeze(["-","-"])',
         '  });',
         'var $$callSite0 = Object.freeze({',
-        '    rawLP: Object.freeze(["foo "," bar"]),',
-        '    expandedLP: Object.freeze(["foo "," bar"])',
+        '    raw: Object.freeze(["foo "," bar"]),',
+        '    cooked: Object.freeze(["foo "," bar"])',
         '  });',
         'foo($$callSite0, (f(bar($$callSite1, (x)))))'
       ].join('\n'),
@@ -141,8 +141,8 @@ function testAssignableQuasiHole() {
     assertEquals(
         [
           'var $$callSite0 = Object.freeze({',
-          '    rawLP: Object.freeze(["foo "," bar"]),',
-          '    expandedLP: Object.freeze(["foo "," bar"])',
+          '    raw: Object.freeze(["foo "," bar"]),',
+          '    cooked: Object.freeze(["foo "," bar"])',
           '  });',
           'foo($$callSite0, ' +
             '(function(){' +

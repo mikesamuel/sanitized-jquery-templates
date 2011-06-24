@@ -304,9 +304,9 @@ function desugar(sugaryJs) {
       moduleContents.push(")");
       hoistedDeclarations.push(
           "var " + callSiteId
-          + " = Object.freeze({\n    rawLP: Object.freeze("
+          + " = Object.freeze({\n    raw: Object.freeze("
           + JSON.stringify(literalPortions)
-          + "),\n    expandedLP: Object.freeze("
+          + "),\n    cooked: Object.freeze("
           + JSON.stringify(literalPortions.map(expandEscapeSequences))
           + ")\n  });\n");
     }
@@ -334,7 +334,7 @@ function desugar(sugaryJs) {
 }
 
 String.interp = function (callSiteId, sve) {
-  var rawStrs = callSiteId['expandedLP'];
+  var rawStrs = callSiteId['cooked'];
   var out = [];
   for (var i = 0, k = -1, n = rawStrs.length; i < n;) {
     out[++k] = rawStrs[i];

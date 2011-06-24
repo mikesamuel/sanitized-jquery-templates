@@ -79,7 +79,7 @@ var msgPartsDecompose = (function () {
  * syntax described at the top of this file.
  */
 var msg = function (callSiteId) {
-  var decomposed = msgPartsDecompose(callSiteId['rawLP']);
+  var decomposed = msgPartsDecompose(callSiteId['raw']);
   var inputXforms = decomposed.inputXforms;
   var literalParts = decomposed.literalParts;
   // TODO: cache inputXforms and literalParts without metadata using callSiteId.

@@ -66,7 +66,7 @@ var safehtml, safeHtmlChooseEscapers;
   };
 
   safehtml = function (callSiteId) {
-    var literalParts = callSiteId['rawLP'];
+    var literalParts = callSiteId['raw'];
     var n = literalParts.length - 1;
     var sanitizers = safeHtmlChooseEscapers(literalParts);
 
