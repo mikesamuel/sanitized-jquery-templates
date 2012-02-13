@@ -783,6 +783,14 @@ simple boolean, numeric, and string values, or complex JSON values
 which cannot have free variables.
 We assume that the JavaScript interpreter will work on arbitrarily
 large inputs.
+<a href="http://www.cse.usf.edu/~ligatti/papers/code-inj.pdf"
+>"Defining Code-Injection Attacks"</a> by Ray &amp;
+Ligatti defines a similar property: a CIAO (code injection attack on
+outputs) occurs when an interpolation causes the parse tree to include
+an expression that is not in its normal form, one consequence of which
+is that has no free variables.
+</p>
+
 </p>
 
 <p>
@@ -837,17 +845,16 @@ meant to ensure that the data submitted was specified by the user.
 <h3>Least Surprise Property</h3>
 <p>
 The last of the security properties that any auto-sanitization scheme should
-preserve is the property of least surprise.  This is not a property that
-can be proven mathematically as it depends on developers' intuition, but
-it is nonetheless important.
+preserve is the property of least surprise.  The authors do not know
+how to formalize this property.
 </p>
 
 <p>
 Developer intuition is important.
-A developer familiar with HTML, CSS, and JavaScript; who knows that
-auto-sanitization is happening should be able to look at a template
-and correctly infer what happens to dynamic values without having to
-read a complex specification document.
+A developer (or code reviewer) familiar with HTML, CSS, and
+JavaScript; who knows that auto-sanitization is happening should be
+able to look at a template and correctly infer what happens to dynamic
+values without having to read a complex specification document.
 Simple rules-of-thumb should be sufficient to understand the system.
 E.g. if a mythical average developer sees
 <code class=prettyprint>&lt;script&gt;var msg = '{$msg}';&lt;/script&gt;</code>
@@ -865,7 +872,7 @@ sometimes developers work around them by concatenating strings.
 It's hard to <code>grep</code> (or craft presubmit triggers) for all
 the places where concatenated strings are passed to SQL APIs, so it's
 hard for a more senior developer to find these after the fact and
-explain how they can achieve their goal working within the system,
+explain how naive developers can achieve their goal working within the system,
 notice a trend that points to a systemic problem with schemas, or
 agree that the exception to the rule is warranted and document it for
 future security auditors.
@@ -2354,7 +2361,7 @@ if (!printableVersion) {
 
 <div class="fullversiononly">
 <hr>
-<!-- hhmts start -->Last modified: Mon Jun 20 21:52:53 PDT 2011 <!-- hhmts end -->
+<!-- hhmts start -->Last modified: Mon Feb 13 13:26:44 EST 2012 <!-- hhmts end -->
 </div>
 
 </body> </html>
