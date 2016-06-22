@@ -2197,9 +2197,20 @@ dual-core processor running Linux 2.6.31.
 </table>
 
 <p>
-Most of the sanitization functions chosen were plain text&rarr;HTML,
-so the non-contextual auto-sanitization.
+Most of the sanitization functions chosen were plain text&rarr;HTML.
+the non-contextual auto-sanitization is correct 63% of the time
+assuming the auto-sanitizer is sufficient in Html, HtmlAttribute, and
+HtmlRcdata contexts.
 </p>
+
+<p>
+If values were aggressively filtered to prevent dangerous URLs from
+appearing in the template input, then non-contextual auto-sanitization
+would be sufficient in 77% of cases.  The rates might be hire for a
+codebase written for non-contextual sanitization by developers aware
+of its limitations.
+</p>
+
 <table summary="distribution of escaping directives">
   <tr><td><code>|escapeHtml</code><td>602<td>
       <td><code>|escapeUri</code><td>15<td></tr>
