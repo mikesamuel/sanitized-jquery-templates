@@ -110,7 +110,7 @@ function keepFocusInTextbox(e)
   while (!g.tagName)
     g = g.parentNode;
   var t = g.tagName.toUpperCase();
-  if (t=="A" || t=="INPUT")
+  if (t=="A" || t=="INPUT" || t=="SELECT")
     return;
 
   if (window.getSelection) {
@@ -474,7 +474,7 @@ function tabcomplete()
         break;
 
       // skip quoted strings
-      if(s.charAt(i) == '\'' || s.charAt(i) == '\"')
+      if(s.charAt(i) == '\'' || s.charAt(i) == '\u0022')
       {
         //dump("skipping quoted chars: ");
         var quot = s.charAt(i);
